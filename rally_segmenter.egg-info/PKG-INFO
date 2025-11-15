@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: rally-segmenter
+Version: 0.1.0
+Summary: Tennis rally segmentation engine
+Requires-Python: >=3.9
+Requires-Dist: numpy
+Requires-Dist: opencv-python
+Requires-Dist: librosa
+Requires-Dist: soundfile
+Requires-Dist: pyyaml
+Requires-Dist: tqdm

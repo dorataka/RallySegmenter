@@ -1,0 +1,15 @@
+.venv/
+venv/
+
+__pycache__/
+*.pyc
+
+runs/
+stats/
+*.mp4
+*.wav
+*.json
+*.csv
+
+.vscode/
+.idea/

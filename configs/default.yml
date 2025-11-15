@@ -1,0 +1,44 @@
+io:
+  scale: 0.5
+  step: 3
+
+motion:
+  method: "flow"      # or "diff"
+  smooth: 7
+  norm: "robust"
+
+audio:
+  method: "flux"      # "flux" or "rms"
+  rms_win: 2048
+  hop: 512
+  smooth: 9
+  bandpass: null
+  weight: 0.35
+
+pose:
+  enabled: false
+  weight: 0.0
+  step: 3
+  min_box_h: 32
+  kps_min_conf: 0.2
+  topk: 1
+  smooth_k: 5
+  speed_low: 0.04
+  speed_high: 0.18
+
+fuse:
+  motion_weight: 0.65
+  audio_weight: 0.35
+  pose_weight: 0.0
+  clip_range: [0.0, 1.0]
+
+segment:
+  hyst_low: 0.12
+  hyst_high: 0.22
+  min_play: 1.4
+  min_gap: 0.8
+  snap_peak_sec: 0.3
+
+eval:
+  tolerance_sec: 0.5
+  iou_thr: 0.1

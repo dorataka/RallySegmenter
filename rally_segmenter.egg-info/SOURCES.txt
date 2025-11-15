@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+rally_segmenter.egg-info/PKG-INFO
+rally_segmenter.egg-info/SOURCES.txt
+rally_segmenter.egg-info/dependency_links.txt
+rally_segmenter.egg-info/entry_points.txt
+rally_segmenter.egg-info/requires.txt
+rally_segmenter.egg-info/top_level.txt
+trc/__init__.py
+trc/config.py
+trc/fuse.py
+trc/io.py

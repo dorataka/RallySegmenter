@@ -1,0 +1,3 @@
+[console_scripts]
+rally-eval = trc.cli.eval:main
+rally-segment = trc.cli.segment:main
