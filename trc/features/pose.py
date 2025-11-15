@@ -447,12 +447,25 @@ def yolo_pose_motion(
 
     pose_raw = w_near * near_series + w_far * far_series
 
-    # ---- 正規化 ----
-    if speed_high <= speed_low:
-        speed_low, speed_high = 0.0, max(1.0, float(np.max(pose_raw) + 1e-6))
+    # ---- 正規化（動画ごとに speed_low / high を自動決定） ----
+    # 有効な値（>0）の分布から「ほぼ静止」と「かなり激しい動き」を決める
+    valid = pose_raw[pose_raw > 1e-6]
+    if valid.size == 0:
+        # そもそも全く検出できなかった場合
+        pose_norm = np.zeros_like(pose_raw, dtype=np.float32)
+    else:
+        # 例えば 5〜95 パーセンタイルを「静止〜激しい」の目安にする
+        low = float(np.percentile(valid, 5))
+        high = float(np.percentile(valid, 95))
 
-    pose_norm = (pose_raw - speed_low) / (speed_high - speed_low)
-    pose_norm = np.clip(pose_norm, 0.0, 1.0).astype(np.float32)
+        # 万が一 high <= low になったときの保険
+        if not np.isfinite(low):
+            low = 0.0
+        if not np.isfinite(high) or high <= low:
+            high = low + 1e-6
+
+        pose_norm = (pose_raw - low) / (high - low)
+        pose_norm = np.clip(pose_norm, 0.0, 1.0).astype(np.float32)
 
     if debug:
         print(
@@ -461,5 +474,11 @@ def yolo_pose_motion(
             f"w_far={w_far}, "
             f"near_roi={near_roi}, far_roi={far_roi}"
         )
+        if valid.size > 0:
+            print(
+                f"[pose] speed range (valid): "
+                f"min={valid.min():.4f}, max={valid.max():.4f}, "
+                f"p5={np.percentile(valid,5):.4f}, p95={np.percentile(valid,95):.4f}"
+            )
 
     return pose_norm
