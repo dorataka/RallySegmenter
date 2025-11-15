@@ -6,7 +6,10 @@ __pycache__/
 
 runs/
 stats/
-!stats/*.txt  
+!stats/*.txt
+!stats/*.csv
+!stats/*.json
+
 
 *.mp4
 *.wav
@@ -15,3 +18,5 @@ stats/
 .idea/
 
 *.egg-info/
+
+*.pt

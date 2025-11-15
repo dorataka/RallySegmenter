@@ -109,14 +109,31 @@ def main():
         print("Empty motion or audio series, no segments.")
         return
 
-    # 長さを揃える
-    L = min(len(mot), len(aud))
-    mot = mot[:L]
-    aud = aud[:L]
-    dt = min(dt_m, dt_a)
+    # ---- ここから「時間軸ベースで揃える」 ----
 
-    # 共通 grid（motion/audio/pose/fused で共有）
-    grid = np.arange(0.0, L * dt, dt, dtype=np.float32)
+    # それぞれの時間軸（秒）
+    t_m = np.arange(len(mot), dtype=np.float32) * float(dt_m)
+    t_a = np.arange(len(aud), dtype=np.float32) * float(dt_a)
+
+    # グリッドの時間解像度は細かい方に合わせる
+    dt = float(min(dt_m, dt_a))
+
+    # 両方が定義されている範囲だけを使う（物理的に正しい範囲）
+    T_end = float(min(t_m[-1], t_a[-1]))
+    if T_end <= 0:
+        print("Non-positive duration, no segments.")
+        return
+
+    grid = np.arange(0.0, T_end, dt, dtype=np.float32)
+
+    # motion / audio を共通 grid に線形補間
+    mot_on_grid = np.interp(grid, t_m, mot).astype(np.float32)
+    aud_on_grid = np.interp(grid, t_a, aud).astype(np.float32)
+
+    # デバッグ用に長さを一応表示
+    print(f"[debug] len(mot_raw)={len(mot)}, dt_m={dt_m:.4f}, T_m={t_m[-1]:.2f}s")
+    print(f"[debug] len(aud_raw)={len(aud)}, dt_a={dt_a:.4f}, T_a={t_a[-1]:.2f}s")
+    print(f"[debug] len(grid)={len(grid)}, dt={dt:.4f}, T_end={T_end:.2f}s")
 
     # --- Pose motion (grid) ---
     pose = None
@@ -136,16 +153,17 @@ def main():
             debug=False,
         )
         if pm is not None:
-            pose = pm[:L]
+            # yolo_pose_motion は len(grid) の配列を返す想定
+            pose = pm.astype(np.float32)
         else:
-            pose = np.zeros(L, dtype=np.float32)
+            pose = np.zeros_like(grid, dtype=np.float32)
     else:
         pose = None
 
     # --- fuse motion + audio (+ pose) ---
     fused = fuse_series(
-        mot,
-        aud,
+        mot_on_grid,
+        aud_on_grid,
         pose,
         w_m=cfg.fuse.motion_weight,
         # audio の重みは config 側の定義に合わせてどちらか使ってください
@@ -171,8 +189,8 @@ def main():
         _dump_features_csv(
             args.dump_features,
             grid=grid,
-            motion=mot,
-            audio=aud,
+            motion=mot_on_grid,
+            audio=aud_on_grid,
             fused=fused,
             pose=pose,
         )
@@ -181,9 +199,9 @@ def main():
     if args.overlay:
         from trc.overlay import render_debug_overlay
 
-        v_i = mot        # grid 上の motion
-        a_i = aud        # grid 上の audio
-        feat = fused     # grid 上の fused
+        v_i = mot_on_grid    # grid 上の motion
+        a_i = aud_on_grid    # grid 上の audio
+        feat = fused         # grid 上の fused
         pose_series = pose if pose is not None else np.zeros_like(grid, dtype=np.float32)
 
         params = dict(
