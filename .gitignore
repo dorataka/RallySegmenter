@@ -9,6 +9,7 @@ stats/
 !stats/*.txt
 !stats/*.csv
 !stats/*.json
+!stats/play_lgbm_model.txt
 
 
 *.mp4
