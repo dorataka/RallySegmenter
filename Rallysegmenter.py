@@ -66,7 +66,7 @@ def main():
         default=None,
         help="play判定のしきい値（未指定なら meta の best_thr を使用）",
     )
-    parser.add_argument("--min-len", type=float, default=1.0, help="最短ラリー長 [sec]")
+    parser.add_argument("--min-len", type=float, default=2.5, help="最短ラリー長 [sec]")
     parser.add_argument("--max-gap", type=float, default=0.4, help="ラリーをマージする最大ギャップ [sec]")
     parser.add_argument("--pad-head", type=float, default=0.20, help="ラリー前に足す余白 [sec]")
     parser.add_argument("--pad-tail", type=float, default=0.15, help="ラリー後に足す余白 [sec]")
