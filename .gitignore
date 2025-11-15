@@ -6,10 +6,12 @@ __pycache__/
 
 runs/
 stats/
+!stats/*.txt  
+
 *.mp4
 *.wav
-*.json
-*.csv
 
 .vscode/
 .idea/
+
+*.egg-info/

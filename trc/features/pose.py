@@ -25,23 +25,6 @@ def _load_or_ask_rois(frame):
     """
     h, w = frame.shape[:2]
 
-    # 既存 ROI があれば使う
-    if os.path.exists(ROI_JSON):
-        try:
-            with open(ROI_JSON, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if data.get("width") == w and data.get("height") == h:
-                near_roi = data.get("near_roi", None)
-                far_roi = data.get("far_roi", None)
-                if near_roi and far_roi:
-                    print(f"[roi] loaded near/far ROI from {ROI_JSON}")
-                    return (
-                        tuple(int(v) for v in near_roi),
-                        tuple(int(v) for v in far_roi),
-                    )
-        except Exception as e:
-            print(f"[roi] failed to load {ROI_JSON}: {e}")
-
     # なければユーザーに 2 回選んでもらう
     print("[roi] No near/far ROI found. Showing a frame to select them …")
 

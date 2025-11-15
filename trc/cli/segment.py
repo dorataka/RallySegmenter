@@ -12,6 +12,48 @@ from trc.fuse import fuse_series
 from trc.segment.hysteresis import hysteresis_segment
 
 
+def _dump_features_csv(
+    path: str,
+    grid: np.ndarray,
+    motion: np.ndarray,
+    audio: np.ndarray,
+    fused: np.ndarray,
+    pose: np.ndarray | None = None,
+):
+    """
+    grid 上の各種 series を 1 行ずつ CSV に書き出す。
+    カラム: t, motion, audio, pose, fused
+    """
+    n = len(grid)
+    m = len(motion)
+    a = len(audio)
+    f = len(fused)
+    p = len(pose) if pose is not None else 0
+
+    L = min(n, m, a, f, p if p > 0 else 10**9)
+
+    t_arr = grid[:L]
+    m_arr = motion[:L]
+    a_arr = audio[:L]
+    f_arr = fused[:L]
+    if pose is not None and p > 0:
+        p_arr = pose[:L]
+    else:
+        p_arr = np.zeros(L, dtype=np.float32)
+
+    out_dir = os.path.dirname(os.path.abspath(path))
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir, exist_ok=True)
+
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["t", "motion", "audio", "pose", "fused"])
+        for t, mv, av, pv, fv in zip(t_arr, m_arr, a_arr, p_arr, f_arr):
+            writer.writerow([f"{t:.3f}", f"{mv:.6f}", f"{av:.6f}", f"{pv:.6f}", f"{fv:.6f}"])
+
+    print(f"[dump] features -> {os.path.abspath(path)}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input_mp4")
@@ -30,6 +72,12 @@ def main():
         type=str,
         default="",
         help="HUD を重ねたデバッグ動画の出力パス（空なら出さない）",
+    )
+    ap.add_argument(
+        "--dump_features",
+        type=str,
+        default="",
+        help="grid と特徴量 (motion/audio/pose/fused) を CSV で保存するパス",
     )
     args = ap.parse_args()
 
@@ -67,11 +115,12 @@ def main():
     aud = aud[:L]
     dt = min(dt_m, dt_a)
 
+    # 共通 grid（motion/audio/pose/fused で共有）
+    grid = np.arange(0.0, L * dt, dt, dtype=np.float32)
+
     # --- Pose motion (grid) ---
     pose = None
     if cfg.pose.enabled and (cfg.pose.weight > 0.0 or cfg.fuse.pose_weight > 0.0):
-        # motion/audio と同じ時間解像度の grid
-        grid = np.arange(0.0, L * dt, dt, dtype=np.float32)
         print("[step] pose motion …")
         pm = yolo_pose_motion(
             args.input_mp4,
@@ -100,10 +149,8 @@ def main():
         pose,
         w_m=cfg.fuse.motion_weight,
         # audio の重みは config 側の定義に合わせてどちらか使ってください
-        # cfg.audio.weight があるなら下の行を使う:
-        # w_a=cfg.audio.weight,
-        # fuse.audio_weight で持っているならこちら:
-        w_a=cfg.fuse.audio_weight,
+        # w_a=cfg.audio.weight,  # audio セクションに weight がある場合はこちら
+        w_a=cfg.fuse.audio_weight,  # fuse セクションで重みを持っているならこちら
         w_p=cfg.fuse.pose_weight,
         clip=cfg.fuse.clip_range,
     )
@@ -119,30 +166,41 @@ def main():
         cfg.segment.snap_peak_sec,
     )
 
+    # --- features CSV 出力（任意） ---
+    if args.dump_features:
+        _dump_features_csv(
+            args.dump_features,
+            grid=grid,
+            motion=mot,
+            audio=aud,
+            fused=fused,
+            pose=pose,
+        )
+
     # --- overlay 出力（任意） ---
     if args.overlay:
         from trc.overlay import render_debug_overlay
 
-        L = len(fused)
-        grid = np.arange(0.0, L * dt, dt, dtype=np.float32)
-
         v_i = mot        # grid 上の motion
         a_i = aud        # grid 上の audio
         feat = fused     # grid 上の fused
-        walk_mask = np.zeros_like(grid, dtype=np.float32)  # walk_mask はまだゼロ埋め
+        pose_series = pose if pose is not None else np.zeros_like(grid, dtype=np.float32)
 
         params = dict(
-            min_rally=cfg.segment.min_play,
-            max_gap=cfg.segment.min_gap,
-            penalty=0.0,
-            pad_head=0.0,
-            pad_tail=0.0,
-            prune_min_hits=0,
-            prune_min_len=0.0,
-            pose_nonplay=getattr(cfg.pose, "enabled", False),
-            pose_gait_thr=getattr(cfg.pose, "kps_min_conf", 0.2),
-            pose_min_walk=0.0,
-            pose_topk=getattr(cfg.pose, "topk", 1),
+            # fuse weights（表示用）
+            motion_weight=float(getattr(cfg.fuse, "motion_weight", 0.5)),
+            audio_weight=float(getattr(cfg.fuse, "audio_weight", 0.2)),
+            pose_weight=float(getattr(cfg.fuse, "pose_weight", 0.3)),
+            # segment
+            hyst_low=cfg.segment.hyst_low,
+            hyst_high=cfg.segment.hyst_high,
+            min_play=cfg.segment.min_play,
+            min_gap=cfg.segment.min_gap,
+            snap_peak_sec=cfg.segment.snap_peak_sec,
+            # pose
+            pose_enabled=bool(getattr(cfg.pose, "enabled", True)),
+            pose_step=int(getattr(cfg.pose, "step", 3)),
+            pose_smooth_k=int(getattr(cfg.pose, "smooth_k", 5)),
         )
 
         render_debug_overlay(
@@ -152,13 +210,13 @@ def main():
             v_i,
             a_i,
             feat,
-            walk_mask,
+            pose_series,  # overlay 側では「walk_mask 引数」を pose series として使う
             params,
             step=2,   # 2フレームに1枚描画（軽量化）
         )
         print(f"[overlay] saved -> {os.path.abspath(args.overlay)}")
 
-    # --- CSV 出力 ---
+    # --- セグメント CSV 出力 ---
     with open(args.pred_csv, "w", newline="", encoding="utf-8") as f:
         wr = csv.writer(f)
         wr.writerow(["start", "end"])
