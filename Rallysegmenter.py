@@ -71,6 +71,13 @@ def main():
     parser.add_argument("--pad-head", type=float, default=0.20, help="ラリー前に足す余白 [sec]")
     parser.add_argument("--pad-tail", type=float, default=0.15, help="ラリー後に足す余白 [sec]")
 
+    # ★ 追加：動画生成をスキップするフラグ
+    parser.add_argument(
+        "--no-video",
+        action="store_true",
+        help="ラリー動画(rallies_smooth.mp4)の生成をスキップして、CSV出力で終了する",
+    )
+
     args = parser.parse_args()
 
     in_mp4 = Path(args.input_mp4)
@@ -144,23 +151,33 @@ def main():
         "scripts/features_to_smooth_segments.py",
         "--model", str(args.model),                  # LGBMモデルを使って p_play を計算
         "--thr", str(thr),                           # しきい値（meta or CLI）
-        "--min_len", str(args.min_len),             # 最短ラリー長
+        "--min_len", str(args.min_len),              # 最短ラリー長
         "--smooth_csv", str(smooth_features),        # features_with_play_smooth.csv
         "--segments_csv", str(smooth_segments),      # smooth_segments.csv
         str(features_window),                        # ★ 最後に位置引数として features_csv を渡す
     ])
 
-    # 6) segments + input.mp4 → rallies_smooth.mp4
-    run([
-        py,
-        "cut_segments.py",
-        str(in_mp4),          # input.mp4
-        str(smooth_segments), # pred_segments.csv 的なCSV (ここでは smooth_segments.csv)
-        str(out_mp4),         # output.mp4
-    ])
+    # ------------------------------------------------------------
+    # 5) segments + input.mp4 → rallies_smooth.mp4
+    #    ※ 重いので、--no-video のときはスキップ
+    # ------------------------------------------------------------
+    if not args.no_video:
+        run([
+            py,
+            "cut_segments.py",
+            str(in_mp4),          # input.mp4
+            str(smooth_segments), # pred_segments.csv 的なCSV (ここでは smooth_segments.csv)
+            str(out_mp4),         # output.mp4
+        ])
 
-    print()
-    print("✅ 完了:", out_mp4)
+        print()
+        print("✅ 完了:", out_mp4)
+    else:
+        print()
+        print("✅ 動画出力をスキップしました (--no-video)")
+        print(f"    features_with_play_smooth.csv: {smooth_features}")
+        print(f"    smooth_segments.csv:           {smooth_segments}")
+
 
 if __name__ == "__main__":
     main()
