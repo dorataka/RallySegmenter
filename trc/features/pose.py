@@ -7,25 +7,45 @@ __all__ = ["yolo_pose_motion"]
 
 ROI_JSON = "court_roi.json"
 
-
-# ---- ROI を管理するユーティリティ（near / far の2枚） ----
-
-def _load_or_ask_rois(frame):
+def _load_or_ask_rois(frame, *, force_new: bool = False):
     """
     frame: 最初のフレーム (H,W,3)
 
-    - すでに court_roi.json があり、解像度が一致すれば near / far の 2 ROI を使う
-    - なければ cv2.selectROI でユーザーに
-        1) 手前プレイヤー用 ROI
-        2) 奥側プレイヤー用 ROI
-      を順番に囲ってもらい、保存する
+    - force_new=False のとき:
+        - すでに court_roi.json があり、解像度が一致すれば near / far をそのまま使う
+        - そうでなければ cv2.selectROI でユーザーに
+            1) 手前プレイヤー用 ROI
+            2) 奥側プレイヤー用 ROI
+          を順番に囲ってもらい、保存する
+    - force_new=True のとき:
+        - 既存の JSON があっても無視し、必ず新しく 2 つ選んで保存する
 
     戻り値: (near_roi, far_roi)
         near_roi, far_roi はそれぞれ (x, y, w, h) or None
     """
     h, w = frame.shape[:2]
 
-    # なければユーザーに 2 回選んでもらう
+    # --- force_new=False なら、まず JSON を試しに読む ---
+    if not force_new and os.path.exists(ROI_JSON):
+        try:
+            with open(ROI_JSON, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("width") == w and data.get("height") == h:
+                near = data.get("near_roi")
+                far = data.get("far_roi")
+                near_roi = tuple(near) if near is not None else None
+                far_roi = tuple(far) if far is not None else None
+                print(
+                    f"[roi] loaded near/far ROI from {ROI_JSON}: "
+                    f"near={near_roi}, far={far_roi}"
+                )
+                return near_roi, far_roi
+            else:
+                print("[roi] ROI JSON found but size mismatch, ask again.")
+        except Exception as e:
+            print(f"[roi] failed to load {ROI_JSON}: {e}, ask again.")
+
+    # --- ここから先は、必ず新しく ROI を選び直すパート（元の処理） ---
     print("[roi] No near/far ROI found. Showing a frame to select them …")
 
     # near ROI（手前プレイヤー）
@@ -87,6 +107,7 @@ def _load_or_ask_rois(frame):
         print(f"[roi] failed to save {ROI_JSON}: {e}")
 
     return near_roi, far_roi
+
 
 
 # ---- 簡易マルチオブジェクトトラッカー（IOU ベース） ----
@@ -277,7 +298,9 @@ def yolo_pose_motion(
         return None
 
     H, W = frame0.shape[:2]
-    near_roi, far_roi = _load_or_ask_rois(frame0)  # それぞれ (x,y,w,h) or None
+    # Rallysegmenter 側で force_new=True で一度選択しておけば、
+    # ここでは JSON を読むだけ（force_new=False）になる
+    near_roi, far_roi = _load_or_ask_rois(frame0, force_new=False)  # それぞれ (x,y,w,h) or None
 
     # 再スタート
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)

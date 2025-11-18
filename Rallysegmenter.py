@@ -5,6 +5,9 @@ from pathlib import Path
 import sys
 import json
 
+import cv2
+from trc.features.pose import _load_or_ask_rois
+
 
 def run(cmd: list[str]) -> None:
     """サブコマンドを実行する小さなユーティリティ"""
@@ -32,6 +35,21 @@ def load_best_thr(meta_path: Path) -> float | None:
         return float(val)
     except Exception:
         return None
+
+
+def ensure_new_roi_for_video(in_mp4: Path) -> None:
+    """
+    毎回必ず新しい ROI を選択し、court_roi.json を上書きする。
+    （同じ動画内では yolo_pose_motion が JSON を読むだけになる想定）
+    """
+    cap = cv2.VideoCapture(str(in_mp4))
+    ok, frame = cap.read()
+    if not ok or frame is None:
+        cap.release()
+        raise RuntimeError(f"Failed to read first frame from {in_mp4}")
+    # force_new=True で、既存の JSON があっても無視して選び直す
+    _load_or_ask_rois(frame, force_new=True)
+    cap.release()
 
 
 def main():
@@ -69,7 +87,7 @@ def main():
     parser.add_argument("--min-len", type=float, default=2.5, help="最短ラリー長 [sec]")
     parser.add_argument("--max-gap", type=float, default=2.5, help="ラリーをマージする最大ギャップ [sec]")
     parser.add_argument("--pad-head", type=float, default=0.20, help="ラリー前に足す余白 [sec]")
-    parser.add_argument("--pad-tail", type=float, default=0.5, help="ラリー後に足す余白 [sec]")
+    parser.add_argument("--pad-tail", type=float, default=0.6, help="ラリー後に足す余白 [sec]")
 
     # ★ 追加：動画生成をスキップするフラグ
     parser.add_argument(
@@ -84,6 +102,10 @@ def main():
     out_mp4 = Path(args.out)
     workdir = Path(args.workdir)
     workdir.mkdir(parents=True, exist_ok=True)
+
+    # ★ 実行の最初に、必ず新しい ROI を選択して court_roi.json を上書きする
+    print("[roi] select new near/far ROI for this video...")
+    ensure_new_roi_for_video(in_mp4)
 
     # 中間ファイルのパスをここで一元管理
     features_input = workdir / "features_input.csv"
